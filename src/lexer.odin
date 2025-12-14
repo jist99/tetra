@@ -32,6 +32,19 @@ Lexer :: struct {
     column: int,
 }
 
+peek_next :: proc(lexer: ^Lexer) -> Token {
+    index := lexer.index
+    line := lexer.line
+    column := lexer.column
+
+    token := get_next(lexer)
+
+    lexer.index = index
+    lexer.line = line
+    lexer.column = column
+    return token
+}
+
 get_next :: proc(lexer: ^Lexer) -> Token {
     for {
         if lexer.index >= len(lexer.data) {
