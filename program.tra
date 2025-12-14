@@ -1,0 +1,18 @@
+// Executes an expression as infix
+ifx = {
+    a = arg 0;
+    op = arg 1;
+    b = arg 2;
+    ret = op a b;
+};
+
+foo = {
+    a = arg 0;
+    ret = str "the number: " a;
+};
+
+s = str 123;
+s = str "hello " s;
+f = foo 987;
+s = str s f;
+_ = print s;

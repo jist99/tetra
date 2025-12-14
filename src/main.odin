@@ -4,18 +4,8 @@ import la "lazytools/allocators"
 import "core:fmt"
 import "core:mem"
 import "core:strings"
-
-code := `
-    ifx = {
-        a = arg 0;
-        op = arg 1;
-        b = arg 2;
-        ret = op a b;
-    };
-
-    b = ifx 5 + 5;
-    _ = print b;
-`
+import os "core:os/os2"
+import "base:runtime"
 
 Function_Ref :: distinct string
 
@@ -26,31 +16,73 @@ Primitive :: union {
     Function_Ref,
 }
 
+// Context for passing to builtin functions
+Function_Context :: struct {
+    definitions: map[string]Function,
+    dcm: ^DeepChainMap,
+    arguments: []Primitive,
+    namespace: string,
+}
+
+// Generic function type encompassing builtin and user-defined functions
 Function :: union {
     [dynamic]Statement,
     // args and super_args (the arguments of the containing function)
-    proc([]Primitive, []Primitive) -> (Primitive, bool),
+    proc([]Primitive, Function_Context) -> (Primitive, bool),
 }
 
 Scope :: struct {
     name: string,
-    data: map[string]Primitive
+    data: map[string]Primitive,
+    alloc: mem.Allocator,
 }
 
 DeepChainMap :: [dynamic]Scope
 
 main :: proc() {
+    // Setup the tracking allocator when we run in debug mode
+    when ODIN_DEBUG {
+        fmt.println("Memory Tracking enabled")
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		context.allocator = mem.tracking_allocator(&track)
+        
+		defer {
+			if len(track.allocation_map) > 0 {
+				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+				for _, entry in track.allocation_map {
+					fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
+				}
+			}
+			if len(track.bad_free_array) > 0 {
+				fmt.eprintf("=== %v incorrect frees: ===\n", len(track.bad_free_array))
+				for entry in track.bad_free_array {
+					fmt.eprintf("- %p @ %v\n", entry.memory, entry.location)
+				}
+			}
+			mem.tracking_allocator_destroy(&track)
+		}
+	}
+
+
     afa: la.Auto_Free_Allocator
     ast_alloc := la.auto_free_allocator(&afa)
     defer free_all(ast_alloc)
 
-    lexer := Lexer{data=transmute([]u8)code}
+    // Read in the file
+    if len(os.args) != 2 {
+        fmt.println("usage: tetra filename")
+    }
+    filename := os.args[1]
+    data := os.read_entire_file(filename, ast_alloc) or_else panic("Couldnt read file")
+
+    lexer := Lexer{data=data}
     parser := Parser{&lexer, make([dynamic]string, ast_alloc)}
 
     ast, ok := parse(&parser, ast_alloc)
     if !ok {
         for err in parser.errors {
-            fmt.printfln("\x1b[31m%v\x1b[0m", err)
+            error(err)
         }
         return
     }
@@ -58,35 +90,7 @@ main :: proc() {
     definitions := make(map[string]Function, ast_alloc)
     ok = collect_definitions(ast[:], &definitions, ast_alloc)
     if !ok do return
-
-    // Add builtin functions
-    definitions["global.+"] = proc(args: []Primitive, _: []Primitive) -> (Primitive, bool) {
-        total := Number(0)
-        for arg in args {
-            num, ok := arg.(Number)
-            if !ok {
-                fmt.printfln("\x1b[31mRuntime Error function `+` only accepts ints, found %v\x1b[0m", arg)
-                return nil, false
-            }
-
-            total += num
-        }
-        return total, true
-    }
-
-    definitions["global.print"] = proc(args: []Primitive, _: []Primitive) -> (Primitive, bool) {
-        for arg in args {
-            fmt.print(arg)
-        }
-        fmt.println()
-        return nil, true
-    }
-
-    definitions["global.arg"] = proc(args: []Primitive, super: []Primitive) -> (Primitive, bool) {
-        num := args[0]
-        index := int(num.(Number))
-        return super[index], true
-    }
+    register_builtins(&definitions)
 
     // Create scopes
     deep_chain_map := make(DeepChainMap, ast_alloc)
@@ -116,7 +120,7 @@ collect_definitions :: proc(
             )
 
             if name in definitions {
-                fmt.printfln("\x1b[31mSyntax Error duplicate name %v found\x1b[0m", name)
+                error("Syntax Error duplicate name %v found", name)
                 return false
             }
 
@@ -140,9 +144,9 @@ execute :: proc(
     afa: la.Auto_Free_Allocator
     context.allocator = la.auto_free_allocator(&afa)
     defer free_all()
-    defer free_all(context.temp_allocator)
+    runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
-    append(dcm, Scope{namespace, make(map[string]Primitive)})
+    append(dcm, Scope{namespace, make(map[string]Primitive), context.allocator})
     local_scope := &dcm[len(dcm) - 1]
 
     for stmt in ast {
@@ -155,7 +159,7 @@ execute :: proc(
             // Traverse the scopes to find the function
             func, full_name, found := find_func(definitions, dcm^, string(call.function))
             if !found {
-                fmt.printfln("\x1b[31mRuntime Error function %v not found\x1b[0m", call.function)
+                error("Runtime Error function %v not found", call.function)
                 return nil, false
             }
 
@@ -181,7 +185,7 @@ execute :: proc(
                         continue
                     }
 
-                    fmt.printfln("\x1b[31mRuntime Error variable %v not found\x1b[0m", arg)
+                    error("Runtime Error variable %v not found", arg)
                     return nil, false
                 }
             }
@@ -200,9 +204,12 @@ execute :: proc(
                     string(full_name)
                 )
 
-            case proc([]Primitive, []Primitive) -> (Primitive, bool):
+            case proc([]Primitive, Function_Context) -> (Primitive, bool):
                 // builtin function
-                returned, ok = function(func_arguments[:], arguments)
+                func_context := Function_Context{
+                    definitions, dcm, arguments, namespace
+                }
+                returned, ok = function(func_arguments[:], func_context)
             }
 
             if !ok {
@@ -210,12 +217,43 @@ execute :: proc(
             }
 
             // Perform the assignment
+            // if the variable is ret we have special rules, it's always local
+            if call.name != "ret" {
+                // first check if the variable exists somewhere up the stack
+                // if it does assign to that
+                #reverse for &scope in dcm {
+                    if string(call.name) in scope.data {
+                        if str, ok := returned.(String); ok {
+                            // put the string into the correct allocation scope
+                            // for ownership purposes
+                            returned = String(strings.clone(string(str), scope.alloc))
+
+                            // NOTE: the string copies here and at the end for `ret`
+                            // could be optimised by implementing a way to move ownership
+                            // of an allocation from one lazy_allocator to another
+                        }
+
+                        scope.data[string(call.name)] = returned
+                    }
+                }
+            }
+
+            // otherwise just assign into the local scope
             local_scope.data[string(call.name)] = returned
         }
     }
 
     if "ret" in local_scope.data {
-        return local_scope.data["ret"]
+        ret := local_scope.data["ret"]
+
+        if len(dcm) > 1 {
+            if str, ok := ret.(String); ok {
+                // clone the string into the parent scope
+                ret = String(strings.clone(string(str), dcm[len(dcm)-2].alloc))       
+            }
+        }
+
+        return ret, true
     }
     pop(dcm)
     return nil, true
@@ -250,4 +288,10 @@ find_func :: proc(definitions: map[string]Function, dcm: DeepChainMap, name: str
     }
 
     return nil, "", false
+}
+
+// Show error messages nicely
+error :: proc(format: string, args: ..any) {
+    ff := fmt.tprintf("%v%v%v", "\x1b[31m", format, "\x1b[0m")
+    fmt.printfln(ff, ..args)
 }
