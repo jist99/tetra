@@ -6,19 +6,24 @@ import "core:mem"
 import "core:strings"
 
 code := `
-    inc = {
+    ifx = {
         a = arg 0;
-        ret = + a 1;
+        op = arg 1;
+        b = arg 2;
+        ret = op a b;
     };
 
-    b = inc 5;
+    b = ifx 5 + 5;
     _ = print b;
 `
+
+Function_Ref :: distinct string
 
 Primitive :: union {
     Bool,
     Number,
     String,
+    Function_Ref,
 }
 
 Function :: union {
@@ -148,17 +153,7 @@ execute :: proc(
 
         case Call:
             // Traverse the scopes to find the function
-            func: Function
-            full_name: string
-            found := false
-            #reverse for scope in dcm {
-                full_name = fmt.tprintf("%v.%v", scope.name, call.function)
-                if full_name in definitions {
-                    func = definitions[full_name]
-                    found = true
-                    break
-                }
-            }
+            func, full_name, found := find_func(definitions, dcm^, string(call.function))
             if !found {
                 fmt.printfln("\x1b[31mRuntime Error function %v not found\x1b[0m", call.function)
                 return nil, false
@@ -166,20 +161,26 @@ execute :: proc(
 
             // Resolve the function's arguments into Primitives
             func_arguments := make([]Primitive, len(call.args), context.temp_allocator)
-            arg_loop: for a, i in call.args {
+            for a, i in call.args {
                 switch arg in a {
                 case Bool: func_arguments[i] = arg
                 case Number: func_arguments[i] = arg
                 case String: func_arguments[i] = arg
                 case Identifier:
                     // Search the scopes for the variable name
-                    #reverse for scope in dcm {
-                        identifier := string(arg)
-                        if identifier in scope.data {
-                            func_arguments[i] = scope.data[identifier]
-                            continue arg_loop
-                        }
+                    variable, found := find_var(dcm^, string(arg))
+                    if found {
+                        func_arguments[i] = variable
+                        continue
                     }
+                    
+                    // attempt to find a function instead
+                    _, variable, found = find_func(definitions, dcm^, string(arg))
+                    if found {
+                        func_arguments[i] = variable
+                        continue
+                    }
+
                     fmt.printfln("\x1b[31mRuntime Error variable %v not found\x1b[0m", arg)
                     return nil, false
                 }
@@ -191,7 +192,13 @@ execute :: proc(
 
             switch function in func {
             case [dynamic]Statement:
-                returned, ok = execute(function[:], definitions, dcm, func_arguments[:], full_name)
+                returned, ok = execute(
+                    function[:],
+                    definitions,
+                    dcm,
+                    func_arguments[:],
+                    string(full_name)
+                )
 
             case proc([]Primitive, []Primitive) -> (Primitive, bool):
                 // builtin function
@@ -212,4 +219,35 @@ execute :: proc(
     }
     pop(dcm)
     return nil, true
+}
+
+// Find the variable in the deep chain map
+find_var :: proc(dcm: DeepChainMap, name: string) -> (Primitive, bool) {
+    #reverse for scope in dcm {
+        if name in scope.data {
+            return scope.data[name], true
+        }
+    }
+
+    return nil, false
+}
+
+// Find the function in defs
+find_func :: proc(definitions: map[string]Function, dcm: DeepChainMap, name: string) -> (Function, Function_Ref, bool) {
+    // Try find a Function_Ref first
+    if full_name, found := find_var(dcm, name); found {
+        if ref, ok := full_name.(Function_Ref); ok {
+            return definitions[string(ref)], ref, true
+        }
+    }
+
+    // Now look through defs normally
+    #reverse for scope in dcm {
+        full_name := fmt.tprintf("%v.%v", scope.name, name)
+        if full_name in definitions {
+            return definitions[full_name], Function_Ref(full_name), true
+        }
+    }
+
+    return nil, "", false
 }
