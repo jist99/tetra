@@ -39,6 +39,11 @@ Scope :: struct {
 
 DeepChainMap :: [dynamic]Scope
 
+// HACK: to prevent scopes basing their auto_free_allocators off of the previous
+// scope's auto_free_allocators we store the base allocator here.
+// So all the individual allocators are independent.
+base_allocator: mem.Allocator
+
 main :: proc() {
     // Setup the tracking allocator when we run in debug mode
     when ODIN_DEBUG {
@@ -64,6 +69,7 @@ main :: proc() {
 		}
 	}
 
+    base_allocator = context.allocator
 
     afa: la.Auto_Free_Allocator
     ast_alloc := la.auto_free_allocator(&afa)
@@ -138,15 +144,16 @@ execute :: proc(
     definitions: map[string]Function,
     dcm: ^DeepChainMap,
     arguments: []Primitive,
-    namespace := "global"
+    namespace := "global",
 ) -> (Primitive, bool) {
     // each function gets its own AFA 
     afa: la.Auto_Free_Allocator
-    context.allocator = la.auto_free_allocator(&afa)
+    context.allocator = la.auto_free_allocator(&afa, base_allocator)
     defer free_all()
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 
     append(dcm, Scope{namespace, make(map[string]Primitive), context.allocator})
+    defer pop(dcm)
     local_scope := &dcm[len(dcm) - 1]
 
     for stmt in ast {
@@ -221,16 +228,13 @@ execute :: proc(
             if call.name != "ret" {
                 // first check if the variable exists somewhere up the stack
                 // if it does assign to that
-                #reverse for &scope in dcm {
+                #reverse for &scope in dcm[:len(dcm)-1] {
                     if string(call.name) in scope.data {
                         if str, ok := returned.(String); ok {
                             // put the string into the correct allocation scope
                             // for ownership purposes
-                            returned = String(strings.clone(string(str), scope.alloc))
-
-                            // NOTE: the string copies here and at the end for `ret`
-                            // could be optimised by implementing a way to move ownership
-                            // of an allocation from one lazy_allocator to another
+                            // Use a move so we don't re-allocate, just change ownership
+                            la.auto_free_move(raw_data(str), scope.alloc)
                         }
 
                         scope.data[string(call.name)] = returned
@@ -249,13 +253,14 @@ execute :: proc(
         if len(dcm) > 1 {
             if str, ok := ret.(String); ok {
                 // clone the string into the parent scope
-                ret = String(strings.clone(string(str), dcm[len(dcm)-2].alloc))       
+                //ret = String(strings.clone(string(str), dcm[len(dcm)-2].alloc))
+                parent_scope := dcm[len(dcm) - 2]
+                la.auto_free_move(raw_data(str), parent_scope.alloc)
             }
         }
 
         return ret, true
     }
-    pop(dcm)
     return nil, true
 }
 

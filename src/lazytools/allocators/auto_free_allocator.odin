@@ -44,6 +44,30 @@ auto_free_allocator :: proc(lazy: ^Auto_Free_Allocator, allocator := context.all
     return
 }
 
+// Moves ownership of an allocation from one AFA to another
+auto_free_move :: proc(alloc: rawptr, to: mem.Allocator, from := context.allocator) -> bool {
+    from := cast(^Auto_Free_Allocator) from.data
+    to := cast(^Auto_Free_Allocator) to.data
+
+    if from == to {
+        return true
+    }
+
+    found := false
+    for ptr, i in from.allocations {
+        if ptr == alloc {
+            unordered_remove(&from.allocations, i)
+            found = true
+            break
+        }
+    }
+
+    if !found do return false
+
+    append(&to.allocations, alloc)
+    return true
+}
+
 auto_free_allocator_proc :: proc(
     allocator_data: rawptr,
     mode: mem.Allocator_Mode,
