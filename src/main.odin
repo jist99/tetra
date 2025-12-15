@@ -44,6 +44,8 @@ DeepChainMap :: [dynamic]Scope
 // So all the individual allocators are independent.
 base_allocator: mem.Allocator
 
+gc: GC_Data
+
 main :: proc() {
     // Setup the tracking allocator when we run in debug mode
     when ODIN_DEBUG {
@@ -100,6 +102,10 @@ main :: proc() {
 
     // Create scopes
     deep_chain_map := make(DeepChainMap, ast_alloc)
+    // Create gc
+    gc = make_gc()
+    defer destroy_gc(&gc)
+
     // Finally execute the code
     execute(ast[:], definitions, &deep_chain_map, {})
 }
@@ -151,6 +157,11 @@ execute :: proc(
     context.allocator = la.auto_free_allocator(&afa, base_allocator)
     defer free_all()
     runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+
+    // this runs after the local scope is destroyed
+    // because defers are run in reverse order
+    // this is important so that we actually clean stuff up!
+    defer gc_collect(&gc, dcm^)
 
     append(dcm, Scope{namespace, make(map[string]Primitive), context.allocator})
     defer pop(dcm)
@@ -230,13 +241,6 @@ execute :: proc(
                 // if it does assign to that
                 #reverse for &scope in dcm[:len(dcm)-1] {
                     if string(call.name) in scope.data {
-                        if str, ok := returned.(String); ok {
-                            // put the string into the correct allocation scope
-                            // for ownership purposes
-                            // Use a move so we don't re-allocate, just change ownership
-                            la.auto_free_move(raw_data(str), scope.alloc)
-                        }
-
                         scope.data[string(call.name)] = returned
                     }
                 }

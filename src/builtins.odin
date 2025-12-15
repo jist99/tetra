@@ -191,13 +191,15 @@ register_builtins :: proc(defs: ^map[string]Function) {
 
 
     defs["global.str"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
-        builder := strings.builder_make()
+        builder := strings.builder_make(base_allocator)
 
         for arg in args {
             fmt.sbprintf(&builder, "%v", arg)
         }
 
-        return String(strings.to_string(builder)), true
+        str := strings.to_string(builder)
+        gc_manage_str(&gc, str)
+        return String(str), true
     }
 
 }

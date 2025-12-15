@@ -6,13 +6,22 @@ ifx = {
     ret = op a b;
 };
 
-foo = {
-    a = arg 0;
-    ret = str "the number: " a;
+id = {
+    ret = arg 0;
 };
 
-s = str 123;
-s = str "hello " s;
-f = foo 987;
-s = str s f;
-_ = print s;
+g = num 0;
+
+foo = {
+    a = num 0;
+    bar = {
+        a = str "Hello";
+        g = id a;
+        _ = print a g;
+    };
+    _ = bar;
+    _ = print a g;
+};
+
+_ = foo;
+_ = print g;
