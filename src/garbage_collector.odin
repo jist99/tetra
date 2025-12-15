@@ -7,6 +7,7 @@ import "core:fmt"
 
 GC_Type :: enum {
     String,
+    Group,
 }
 
 GC_Entry :: struct {
@@ -30,6 +31,11 @@ make_gc :: proc() -> (out: GC_Data) {
 
 destroy_gc :: proc(gc: ^GC_Data) {
     for entry in gc.entries {
+        if entry.type == .Group {
+            g := cast(^Group)entry.ptr
+            delete(g^)
+        }
+
         free(entry.ptr)
     }
 
@@ -41,6 +47,16 @@ gc_manage_str :: proc(gc: ^GC_Data, str: string) {
         marked = 0,
         ptr = raw_data(str),
         type = .String,
+    }
+
+    append(&gc.entries, entry)
+}
+
+gc_manage_group :: proc(gc: ^GC_Data, g: ^Group) {
+    entry := GC_Entry {
+        marked = 0,
+        ptr = g,
+        type = .Group,
     }
 
     append(&gc.entries, entry)
@@ -65,19 +81,18 @@ gc_collect :: proc(gc: ^GC_Data, dcm: DeepChainMap) {
     // Mark
     for scope in dcm {
         for key, value in scope.data {
-            #partial switch primitive in value {
-            case String:
-                mark(gc, raw_data(primitive), .String)
-
-            case:
-                continue
-            }
+            mark(gc, value)
         }
     }
 
     // Sweep
     #reverse for entry, i in gc.entries {
         if entry.marked == gc.generation do continue
+
+        if entry.type == .Group {
+            g := cast(^Group)entry.ptr
+            delete(g^)
+        }
 
         free(entry.ptr, base_allocator)
         // This works because we're going backwards
@@ -93,11 +108,34 @@ gc_collect :: proc(gc: ^GC_Data, dcm: DeepChainMap) {
 }
 
 @(private="file")
-mark :: proc(gc: ^GC_Data, ptr: rawptr, type: GC_Type) {
+mark :: proc(gc: ^GC_Data, value: Primitive) {
+    type: GC_Type
+    ptr: rawptr
+
+    #partial switch primitive in value {
+    case String:
+        ptr = raw_data(primitive)
+        type = .String
+
+    case ^Group:
+        ptr = primitive
+        type = .Group
+
+        // Mark stuff nested in group
+        for item in primitive {
+            mark(gc, item)
+        }
+
+    case:
+        return
+    }
+
+    // Perform the marking
     for &entry in gc.entries {
         if entry.type != type do continue
         if entry.ptr == ptr {
             entry.marked = gc.generation
+            return
         }
     }
 }

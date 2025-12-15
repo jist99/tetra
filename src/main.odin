@@ -9,11 +9,14 @@ import "base:runtime"
 
 Function_Ref :: distinct string
 
+Group :: [dynamic]Primitive
+
 Primitive :: union {
     Bool,
     Number,
     String,
     Function_Ref,
+    ^Group,
 }
 
 // Context for passing to builtin functions

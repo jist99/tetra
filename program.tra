@@ -1,17 +1,12 @@
 // Executes an expression as infix
-//ifx = {
-//    a = arg 0;
-//    op = arg 1;
-//    b = arg 2;
-//    ret = op a b;
-//};
-
-a = num 0;
-b = num 1;
-_ = for 0 1001 iter;
-iter = {
-    temp = num b;
-    b = + a b;
-    a = num temp;
+ifx = {
+    a = arg 0;
+    op = arg 1;
+    b = arg 2;
+    ret = op a b;
 };
-_ = print b;
+
+g = group 0 1 "hello" false;
+_ = print g;
+_ = append g 45 67;
+_ = print g;

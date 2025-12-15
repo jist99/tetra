@@ -74,7 +74,18 @@ register_builtins :: proc(defs: ^map[string]Function) {
 
     defs["global.print"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
         for arg in args {
-            fmt.print(arg)
+            if group, ok := arg.(^Group); ok {
+                fmt.print("[", group[0], sep="", flush=false)
+
+                for item in group[1:] {
+                    fmt.print(",", item, flush=false)
+                }
+
+                fmt.print("] ")
+                continue
+            }
+
+            fmt.print(arg, flush=false)
         }
         fmt.println()
         return nil, true
@@ -105,10 +116,13 @@ register_builtins :: proc(defs: ^map[string]Function) {
         }
         
         cond := execute_func(args[0], super) or_return
+        cond_satisfied := false
+        if b, ok := cond.(Bool); ok {
+            cond_satisfied = bool(b)
+        }
 
         ret: Primitive
-
-        if cond == Bool(true) {
+        if cond_satisfied {
             ret = execute_func(args[1], super) or_return
         } else if len(args) == 3 {
             // else case
@@ -181,7 +195,7 @@ register_builtins :: proc(defs: ^map[string]Function) {
         case Number:
             return arg, true
 
-        case Function_Ref:
+        case Function_Ref, ^Group:
             error("Runtime Error function `num` cannot convert function `%v` into Number", arg)
             return nil, false
         }
@@ -201,6 +215,87 @@ register_builtins :: proc(defs: ^map[string]Function) {
         gc_manage_str(&gc, str)
         return String(str), true
     }
+
+    defs["global.group"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        group := new(Group, base_allocator)
+        group^ = make(Group, base_allocator)
+        append(group, ..args)
+
+        gc_manage_group(&gc, group)
+
+        return group, true
+    }
+
+    defs["global.get"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `get` expects two arguments.\nUsage: get group index")
+            return nil, false
+        }
+
+        // TODO: Extend this to strings?
+        group, ok := args[0].(^Group)
+        if !ok {
+            error("Runtime Error function `get` expects a Group as its first argument, got %v", args[0])
+            return nil, false
+        }
+
+        index, ok2 := args[1].(Number)
+        if !ok2 {
+            error("Runtime Error function `get` expects a Number as its second argument, got %v", args[1])
+            return nil, false
+        }
+
+        ind := int(index)
+
+        if ind < 0 {
+            ind = len(group) + ind
+        }
+
+        if ind >= len(group) || ind < 0 {
+            error("Runtime Error group has %v elements, indexed at %v", len(group), index)
+            return nil, false
+        }
+
+        return group[ind], true
+    }
+
+    defs["global.len"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        if len(args) != 1 {
+            error("Runtime Error function `len` only accepts one argument, got %v", args)
+            return nil, false
+        }
+
+        #partial switch arg in args[0] {
+        case String:
+            return Number(len(arg)), true
+
+        case ^Group:
+            return Number(len(arg)), true
+
+        case:
+            error("Runtime Error function `len` only accepts String or Group, got %v", arg)
+            return nil, false
+        }
+    }
+
+    defs["global.append"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        if len(args) < 2 {
+            error("Runtime Error function `append` expects two arguments\nUsage: append group item ...")
+            return nil, false
+        }
+
+        group, ok := args[0].(^Group)
+        if !ok {
+            error("Runtime Error function `append` expects the first argument to be a Group, got %v", args[0])
+            return nil, false
+        }
+
+        append(group, ..args[1:])
+        return group, true
+    }
+
+    // TODO: combine. Combine multiple groups into a new group with all the info copied.
+    // Need to make sure the new group is created properly and registered into the GC!
 
 }
 
