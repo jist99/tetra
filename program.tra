@@ -1,27 +1,17 @@
 // Executes an expression as infix
-ifx = {
-    a = arg 0;
-    op = arg 1;
-    b = arg 2;
-    ret = op a b;
+//ifx = {
+//    a = arg 0;
+//    op = arg 1;
+//    b = arg 2;
+//    ret = op a b;
+//};
+
+a = num 0;
+b = num 1;
+_ = for 0 1001 iter;
+iter = {
+    temp = num b;
+    b = + a b;
+    a = num temp;
 };
-
-id = {
-    ret = arg 0;
-};
-
-g = num 0;
-
-foo = {
-    a = num 0;
-    bar = {
-        a = str "Hello";
-        g = id a;
-        _ = print a g;
-    };
-    _ = bar;
-    _ = print a g;
-};
-
-_ = foo;
-_ = print g;
+_ = print b;
