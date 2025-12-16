@@ -117,27 +117,27 @@ VOLUME_DOWN   = num 25;  // Key: Android volume down button
 // Colours //
 WHITE = group 255 255 255 255;
 
-_ = main;
+main;
 
 main = {
-    _ = init_window 600 400 "Test";
+    init_window 600 400 "Test";
     shouldnt_close = {
         close = window_should_close;
-        ret = not close;
+        not close;
     };
-    _ = while shouldnt_close game_loop;
+    while shouldnt_close game_loop;
 };
 
 game_loop = {
-    _ = begin_drawing;
+    begin_drawing;
 
-    _ = draw_text "Hello world" 10 10 100 WHITE;
+    draw_text "Hello world" 10 10 100 WHITE;
 
-    _ = if {ret = is_key_down ENTER;} {
-        _ = print "enter is pressed";
+    if {is_key_down ENTER;} {
+        print "enter is pressed";
     };
 
-    _ = end_drawing;
+    end_drawing;
 };
 
 // Helpers //
@@ -149,5 +149,3 @@ ifx = {
     b = arg 2;
     ret = op a b;
 };
-
-always = {ret = bool true;};

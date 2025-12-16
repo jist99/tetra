@@ -257,8 +257,8 @@ execute :: proc(
             }
 
             // Perform the assignment
-            // if the variable is ret we have special rules, it's always local
-            if call.name != "ret" {
+            // if the variable is ret or _ we have special rules, it's always local
+            if call.name != "ret" && call.name != "_" {
                 // first check if the variable exists somewhere up the stack
                 // if it does assign to that
                 #reverse for &scope in dcm[:len(dcm)-1] {
@@ -273,8 +273,13 @@ execute :: proc(
         }
     }
 
-    if "ret" in local_scope.data {
-        ret := local_scope.data["ret"]
+    if "ret" in local_scope.data || "_" in local_scope.data {
+        ret: Primitive
+        if "ret" in local_scope.data {
+            ret = local_scope.data["ret"]
+        } else {
+            ret = local_scope.data["_"]
+        }
 
         if len(dcm) > 1 {
             if str, ok := ret.(String); ok {

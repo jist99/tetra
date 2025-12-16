@@ -70,7 +70,19 @@ parse_statements :: proc(parser: ^Parser) -> [dynamic]Statement{
 
         assignment := edr(parser, .Identifier) or_continue
         name := Identifier(assignment.data)
-        edr(parser, .Equals) or_continue
+
+        if peek_next(parser).type == .Equals {
+            edr(parser, .Equals) or_continue
+        } else {
+            // function call with implicit _
+            call, ok := parse_function_call(parser, Identifier("_"), assignment)
+            if !ok {
+                recover(parser)
+                continue
+            }
+            append(&statements, call)
+            continue
+        }
 
         if peek_next(parser).type == .Open_Paren {
             // function definition
@@ -94,8 +106,8 @@ parse_statements :: proc(parser: ^Parser) -> [dynamic]Statement{
     return statements
 }
 
-parse_function_call :: proc(parser: ^Parser, name: Identifier) -> (call: Call, ok: bool) {
-    function := ed(parser, .Identifier) or_return
+parse_function_call :: proc(parser: ^Parser, name: Identifier, func: Maybe(Token) = nil) -> (call: Call, ok: bool) {
+    function := func.? or_else ed(parser, .Identifier) or_return
     args := make([dynamic]Atom)
 
     for {
