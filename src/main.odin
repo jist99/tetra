@@ -28,10 +28,13 @@ Function_Context :: struct {
 }
 
 // Generic function type encompassing builtin and user-defined functions
+Return_Func :: struct {}
 Function :: union {
     [dynamic]Statement,
     // args and super_args (the arguments of the containing function)
     proc([]Primitive, Function_Context) -> (Primitive, bool),
+    // Special function for early returns
+    Return_Func,
 }
 
 Scope :: struct {
@@ -231,6 +234,22 @@ execute :: proc(
                     definitions, dcm, arguments, namespace
                 }
                 returned, ok = function(func_arguments[:], func_context)
+
+            case Return_Func:
+                should_return := true
+                if len(func_arguments) >= 1 {
+                    cond, is_bool := func_arguments[0].(Bool)
+                    if !is_bool {
+                        error("Runtime Error function return only accepts Bool.")
+                        return nil, false
+                    }
+                    should_return = bool(cond)
+                }
+
+                if should_return {
+                    return nil, true
+                }
+                returned, ok = nil, true
             }
 
             if !ok {

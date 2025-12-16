@@ -6,7 +6,11 @@ ifx = {
     ret = op a b;
 };
 
-g = group 0 1 "hello" false;
-_ = print g;
-_ = append g 45 67;
-_ = print g;
+foo = {
+    a = arg 0;
+    value = eq a 0;
+    _ = return value;
+    _ = print "no early";
+};
+
+_ = foo 10;

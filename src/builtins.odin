@@ -5,6 +5,8 @@ import "core:strconv"
 import "core:strings"
 
 register_builtins :: proc(defs: ^map[string]Function) {
+    defs["global.return"] = Return_Func{}
+
     defs["global.+"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
         total := Number(0)
         for arg in args {
@@ -70,6 +72,138 @@ register_builtins :: proc(defs: ^map[string]Function) {
         }
 
         return total, true
+    }
+
+    // We want to call eq from other builtins, so define it seperately
+    defs["global.eq"] = equality
+    equality :: proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        if len(args) < 2 {
+            error("Runtime Error function `eq` requires two or more arugments.")
+            return nil, false
+        }
+
+        // This can be massively simplified since we can just do
+        // a direct ==
+        // But I've written this now so we'll live with it for now
+        all_equal :: proc(base: $T, args: []Primitive) -> Bool {
+            for arg in args[1:] {
+                item, ok := arg.(T)
+                if !ok {
+                    return Bool(false)
+                }
+                if base != item {
+                    return Bool(false)
+                }
+            }
+            return Bool(true)
+        }
+
+        group_equality :: proc(group: ^Group, other: ^Group) -> Bool {
+            if len(group) != len(other) {
+                return Bool(false)
+            }
+
+            for i in 0 ..< len(group) {
+                sub_group, ok := group[i].(^Group)
+                other_sub, ok2 := other[i].(^Group)
+                equal: Bool
+                if ok && ok2 {
+                    equal = group_equality(sub_group, other_sub)
+                } else if !ok && !ok2 {
+                    equal = group[i] == other[i]
+                } else {
+                    return Bool(false)
+                }
+                if equal == Bool(false) do return Bool(false)
+            }
+
+            return Bool(true)
+        }
+
+        switch base in args[0] {
+        case String:
+            return all_equal(base, args), true
+
+        case Bool:
+            return all_equal(base, args), true
+
+        case Number:
+            return all_equal(base, args), true
+
+        case Function_Ref:
+            return all_equal(base, args), true
+
+        case ^Group:
+            for item in args[1:] {
+                group, ok := item.(^Group)
+                if !ok {
+                    return Bool(false), true
+                }
+                if group_equality(base, group) == Bool(false) {
+                    return Bool(false), true
+                }
+            }
+            return Bool(true), true
+        }
+
+        panic("Impossible")
+    }
+
+    defs["global.neq"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
+        value, ok := equality(args, Function_Context{})
+        if !ok {
+            return nil, false
+        }
+        boolean := value.(Bool)
+        return Bool(!bool(boolean)), true
+    }
+
+    defs["global.>"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `>` only accepts two arguments\nUsage: > num num")
+        }
+        all_args_are(args, Number, ">") or_return
+
+        left := args[0].(Number)
+        right := args[1].(Number)
+
+        return Bool(left > right), true
+    }
+
+    defs["global.>="] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `>=` only accepts two arguments\nUsage: >= num num")
+        }
+        all_args_are(args, Number, ">=") or_return
+
+        left := args[0].(Number)
+        right := args[1].(Number)
+
+        return Bool(left >= right), true
+    }
+
+    defs["global.<"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `<` only accepts two arguments\nUsage: < num num")
+        }
+        all_args_are(args, Number, "<") or_return
+
+        left := args[0].(Number)
+        right := args[1].(Number)
+
+        return Bool(left < right), true
+    }
+
+    defs["global.<="] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `<=` only accepts two arguments\nUsage: <= num num")
+        }
+        all_args_are(args, Number, "<=") or_return
+
+        left := args[0].(Number)
+        right := args[1].(Number)
+
+        return Bool(left <= right), true
     }
 
     defs["global.print"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
@@ -145,24 +279,96 @@ register_builtins :: proc(defs: ^map[string]Function) {
         }
 
         end, ok2 := args[1].(Number)
-        if !ok {
+        if !ok2 {
             error("Runtime Error function `for` only accepts number for arg 1.")
             return nil, false
         }
 
         func, ok3 := args[2].(Function_Ref)
-        if !ok {
+        if !ok3 {
             error("Runtime Error function `for` only accepts function for arg 2.")
             return nil, false
         }
 
-        ret: Primitive
+        broken := false
         for i in int(start)..<int(end) {
-            ret, ok = execute_func(func, super, {Number(i)})
+            ret, ok := execute_func(func, super, {Number(i)})
             if !ok do return nil, false
+
+            if ret == nil do ret = Bool(true)
+            boolean, ok2 := ret.(Bool)
+            if !ok2 {
+                error(
+                    "Runtime Error iter function within `for` `%v` may only return Bool. Got %v.\nTrue = continue iterating, False = break iteration",
+                    func, ret
+                )
+                return nil, false
+            }
+
+            if boolean == Bool(false) {
+                broken = true
+                break
+            }
         }
 
-        return ret, true
+        return Bool(broken), true
+    }
+
+    defs["global.while"] = proc(args: []Primitive, super: Function_Context) -> (Primitive, bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `while` requires 2 arguments.\nUsage: while cond func")
+            return nil, false
+        }
+
+        cond, ok := args[0].(Function_Ref)
+        if !ok {
+            error("Runtime Error function `while` only accepts function for arg 0.")
+            return nil, false
+        }
+
+        func, ok2 := args[1].(Function_Ref)
+        if !ok2 {
+            error("Runtime Error function `while` only accepts function for arg 1.")
+            return nil, false
+        }
+
+        broken := false
+        for {
+            // check the condition on the while loop
+            if cond, ok := execute_func(cond, super, {}); ok {
+                boolean, ok2 := cond.(Bool)
+                if !ok2 {
+                    error(
+                        "Runtime Error cond function `%v` within while may only return Bool. Got %v.",
+                        func, cond
+                    )
+                    return nil, false
+                }
+
+                if boolean == Bool(false) do break
+            }
+
+            // execute the iter function
+            ret, ok := execute_func(func, super, {})
+            if !ok do return nil, false
+
+            if ret == nil do ret = Bool(true)
+            boolean, ok2 := ret.(Bool)
+            if !ok2 {
+                error(
+                    "Runtime Error iter function within `while` `%v` may only return Bool. Got %v.\nTrue = continue iterating, False = break iteration",
+                    func, ret
+                )
+                return nil, false
+            }
+
+            if boolean == Bool(false) {
+                broken = true
+                break
+            }
+        }
+
+        return Bool(broken), true
     }
 
     defs["global.bool"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
@@ -294,8 +500,27 @@ register_builtins :: proc(defs: ^map[string]Function) {
         return group, true
     }
 
-    // TODO: combine. Combine multiple groups into a new group with all the info copied.
-    // Need to make sure the new group is created properly and registered into the GC!
+    defs["global.combine"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) < 2 {
+            error("Runtime Error function `combine` expects two arguments\nUsage: combine group group ...")
+            return nil, false
+        }
+
+        all_args_are(args, ^Group, "combine") or_return
+
+        group := new(Group, base_allocator)
+        group^ = make(Group, base_allocator)
+        gc_manage_group(&gc, group)
+
+        for g in args {
+            other_group := g.(^Group)
+            for elem in other_group {
+                append(group, elem)
+            }
+        }
+
+        return group, true
+    }
 
 }
 
@@ -338,6 +563,10 @@ execute_func :: proc(
 
     case [dynamic]Statement:
         return execute(raw_fn[:], super.definitions, super.dcm, args, string(ref))
+    
+    case Return_Func:
+        error("Runtime Error cannot use `return` func as lambda.")
+        return nil, false
     }
 
     panic("Impossible")
