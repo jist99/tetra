@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import "vendor:raylib"
 
 register_builtins :: proc(defs: ^map[string]Function) {
     defs["global.return"] = Return_Func{}
@@ -206,6 +207,16 @@ register_builtins :: proc(defs: ^map[string]Function) {
         return Bool(left <= right), true
     }
 
+    defs["global.not"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 1 {
+            error("Runtime Error function `not` only accepts one argument\nUsage: not bool")
+            return nil, false
+        }
+
+        arg := as_type(args, 0, Bool, "not") or_return
+        return Bool(!bool(arg)), true
+    }
+
     defs["global.print"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
         for arg in args {
             if group, ok := arg.(^Group); ok {
@@ -243,16 +254,16 @@ register_builtins :: proc(defs: ^map[string]Function) {
     }
 
     defs["global.if"] = proc(args: []Primitive, super: Function_Context) -> (out: Primitive, ok: bool) {
-        all_args_are(args, Function_Ref, "if") or_return
-
         if len(args) < 2 || len(args) > 3 {
-            error("Runtime Error function `if` only accepts two arguments.\nUsage: if cond then [else]")
+            error("Runtime Error function `if` only accepts two-three arguments.\nUsage: if cond then [else]")
         }
         
-        cond := execute_func(args[0], super) or_return
-        cond_satisfied := false
-        if b, ok := cond.(Bool); ok {
-            cond_satisfied = bool(b)
+        cond := as_type(args, 0, Bool, "if") or_return
+        cond_satisfied := bool(cond)
+
+        _ = as_type(args, 1, Function_Ref, "if") or_return
+        if len(args) == 3 {
+            _ = as_type(args, 1, Function_Ref, "if") or_return
         }
 
         ret: Primitive
@@ -522,9 +533,89 @@ register_builtins :: proc(defs: ^map[string]Function) {
         return group, true
     }
 
+    // Raylib functions!
+    defs["global.init_window"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 3 {
+            error("Runtime Error init_window requires 3 args\nUsage: init_window width height name")
+            return nil, false
+        }
+
+        width := as_type(args, 0, Number, "init_window") or_return
+        height := as_type(args, 1, Number, "init_window") or_return
+        name := as_type(args, 2, String, "init_window") or_return
+
+        c_name := strings.clone_to_cstring(string(name), context.temp_allocator)
+        raylib.InitWindow(i32(width), i32(height), c_name)
+        return nil, true
+    }
+
+    defs["global.window_should_close"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        should_close := raylib.WindowShouldClose()
+        return Bool(should_close), true
+    }
+
+    defs["global.begin_drawing"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        raylib.BeginDrawing()
+        return nil, true
+    }
+
+    defs["global.end_drawing"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        raylib.EndDrawing()
+        return nil, true
+    }
+
+    defs["global.draw_text"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 5 {
+            error("Runtime Error draw_text requires 5 arguments")
+            return nil, false
+        }
+
+        text := as_type(args, 0, String, "draw_text") or_return
+        pos_x := as_type(args, 1, Number, "draw_text") or_return
+        pos_y := as_type(args, 2, Number, "draw_text") or_return
+        font_size := as_type(args, 3, Number, "draw_text") or_return
+        colour := as_type(args, 4, ^Group, "draw_text") or_return
+
+        if len(colour) != 4 {
+            error("Runtime Error Colour must have 4 values RGBA, got %v", colour)
+            return nil, false
+        }
+        ray_colour: raylib.Color
+        for entry, i in colour {
+            num, ok := entry.(Number)
+            if !ok {
+                error("Runtime Error Colour may only contain Numbers, got %v", entry)
+            }
+            ray_colour[i] = u8(num)
+        }
+
+        c_text := strings.clone_to_cstring(string(text), context.temp_allocator)
+        raylib.DrawText(c_text, i32(pos_x), i32(pos_y), i32(font_size), ray_colour)
+        return nil, true
+    }
+
+    defs["global.is_key_down"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 1 {
+            error("Runtime Error `is_key_down` only accepts one argument, the keycode.")
+            return nil, false
+        }
+
+        keycode := as_type(args, 0, Number, "is_key_down") or_return
+        return Bool(raylib.IsKeyDown(raylib.KeyboardKey(keycode))), true
+    }
 }
 
 // Helpers
+@(private="file")
+as_type :: proc(args: []Primitive, idx: int, $T: typeid, source: string) -> (out: T, ok: bool) {
+    out, ok = args[idx].(T)
+    if !ok {
+        error("Runtime Error %v arg %v must be %v", source, idx, typeid_of(T))
+        return
+    }
+    return
+}
+
 @(private="file")
 all_args_are :: proc(args: []Primitive, $T: typeid, from: string) -> bool {
     for arg in args {

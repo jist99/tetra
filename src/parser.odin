@@ -96,6 +96,9 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier) -> (call: Call, o
             break
         }
 
+        if peek == .Open_Paren {
+            
+        }
 
         current := get_next(parser)
         #partial switch current.type {

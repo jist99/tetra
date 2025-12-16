@@ -1,0 +1,155 @@
+// Keycodes //
+KEY_NULL      = num 0;   // Key: NULL, used for no key pressed
+// Alphanumeric keys
+APOSTROPHE    = num 39;  // Key: '
+COMMA         = num 44;  // Key: ,
+MINUS         = num 45;  // Key: -
+PERIOD        = num 46;  // Key: .
+SLASH         = num 47;  // Key: /
+ZERO          = num 48;  // Key: 0
+ONE           = num 49;  // Key: 1
+TWO           = num 50;  // Key: 2
+THREE         = num 51;  // Key: 3
+FOUR          = num 52;  // Key: 4
+FIVE          = num 53;  // Key: 5
+SIX           = num 54;  // Key: 6
+SEVEN         = num 55;  // Key: 7
+EIGHT         = num 56;  // Key: 8
+NINE          = num 57;  // Key: 9
+SEMICOLON     = num 59;  // Key: ;
+EQUAL         = num 61;  // Key: =
+A             = num 65;  // Key: A | a
+B             = num 66;  // Key: B | b
+C             = num 67;  // Key: C | c
+D             = num 68;  // Key: D | d
+E             = num 69;  // Key: E | e
+F             = num 70;  // Key: F | f
+G             = num 71;  // Key: G | g
+H             = num 72;  // Key: H | h
+I             = num 73;  // Key: I | i
+J             = num 74;  // Key: J | j
+K             = num 75;  // Key: K | k
+L             = num 76;  // Key: L | l
+M             = num 77;  // Key: M | m
+N             = num 78;  // Key: N | n
+O             = num 79;  // Key: O | o
+P             = num 80;  // Key: P | p
+Q             = num 81;  // Key: Q | q
+R             = num 82;  // Key: R | r
+S             = num 83;  // Key: S | s
+T             = num 84;  // Key: T | t
+U             = num 85;  // Key: U | u
+V             = num 86;  // Key: V | v
+W             = num 87;  // Key: W | w
+X             = num 88;  // Key: X | x
+Y             = num 89;  // Key: Y | y
+Z             = num 90;  // Key: Z | z
+LEFT_BRACKET  = num 91;  // Key: [
+BACKSLASH     = num 92;  // Key: '\'
+RIGHT_BRACKET = num 93;  // Key: ]
+GRAVE         = num 96;  // Key: `
+// Function keys
+SPACE         = num 32;  // Key: Space
+ESCAPE        = num 256; // Key: Esc
+ENTER         = num 257; // Key: Enter
+TAB           = num 258; // Key: Tab
+BACKSPACE     = num 259; // Key: Backspace
+INSERT        = num 260; // Key: Ins
+DELETE        = num 261; // Key: Del
+RIGHT         = num 262; // Key: Cursor right
+LEFT          = num 263; // Key: Cursor left
+DOWN          = num 264; // Key: Cursor down
+UP            = num 265; // Key: Cursor up
+PAGE_UP       = num 266; // Key: Page up
+PAGE_DOWN     = num 267; // Key: Page down
+HOME          = num 268; // Key: Home
+END           = num 269; // Key: End
+CAPS_LOCK     = num 280; // Key: Caps lock
+SCROLL_LOCK   = num 281; // Key: Scroll down
+NUM_LOCK      = num 282; // Key: Num lock
+PRINT_SCREEN  = num 283; // Key: Print screen
+PAUSE         = num 284; // Key: Pause
+F1            = num 290; // Key: F1
+F2            = num 291; // Key: F2
+F3            = num 292; // Key: F3
+F4            = num 293; // Key: F4
+F5            = num 294; // Key: F5
+F6            = num 295; // Key: F6
+F7            = num 296; // Key: F7
+F8            = num 297; // Key: F8
+F9            = num 298; // Key: F9
+F10           = num 299; // Key: F10
+F11           = num 300; // Key: F11
+F12           = num 301; // Key: F12
+LEFT_SHIFT    = num 340; // Key: Shift left
+LEFT_CONTROL  = num 341; // Key: Control left
+LEFT_ALT      = num 342; // Key: Alt left
+LEFT_SUPER    = num 343; // Key: Super left
+RIGHT_SHIFT   = num 344; // Key: Shift right
+RIGHT_CONTROL = num 345; // Key: Control right
+RIGHT_ALT     = num 346; // Key: Alt right
+RIGHT_SUPER   = num 347; // Key: Super right
+KB_MENU       = num 348; // Key: KB menu
+// Keypad keys
+KP_0          = num 320; // Key: Keypad 0
+KP_1          = num 321; // Key: Keypad 1
+KP_2          = num 322; // Key: Keypad 2
+KP_3          = num 323; // Key: Keypad 3
+KP_4          = num 324; // Key: Keypad 4
+KP_5          = num 325; // Key: Keypad 5
+KP_6          = num 326; // Key: Keypad 6
+KP_7          = num 327; // Key: Keypad 7
+KP_8          = num 328; // Key: Keypad 8
+KP_9          = num 329; // Key: Keypad 9
+KP_DECIMAL    = num 330; // Key: Keypad .
+KP_DIVIDE     = num 331; // Key: Keypad /
+KP_MULTIPLY   = num 332; // Key: Keypad *
+KP_SUBTRACT   = num 333; // Key: Keypad -
+KP_ADD        = num 334; // Key: Keypad +
+KP_ENTER      = num 335; // Key: Keypad Enter
+KP_EQUAL      = num 336; // Key: Keypad =
+// Android key buttons
+BACK          = num 4;   // Key: Android back button
+MENU          = num 5;   // Key: Android menu button
+VOLUME_UP     = num 24;  // Key: Android volume up button
+VOLUME_DOWN   = num 25;  // Key: Android volume down button
+
+// Colours //
+WHITE = group 255 255 255 255;
+
+_ = main;
+
+main = {
+    _ = init_window 600 400 "Test";
+    shouldnt_close = {
+        close = window_should_close;
+        ret = not close;
+    };
+    _ = while shouldnt_close game_loop;
+};
+
+game_loop = {
+    _ = begin_drawing;
+
+    _ = draw_text "Hello world" 10 10 100 WHITE;
+
+    enter = is_key_down ENTER;
+    _ = if enter then;
+    then = {
+        _ = print "enter is pressed";
+    };
+
+    _ = end_drawing;
+};
+
+// Helpers //
+
+// Executes an expression as infix
+ifx = {
+    a = arg 0;
+    op = arg 1;
+    b = arg 2;
+    ret = op a b;
+};
+
+always = {ret = bool true;};
