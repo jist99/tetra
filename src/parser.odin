@@ -40,12 +40,20 @@ Statement :: union {
 Parser :: struct {
     using lexer: ^Lexer,
     errors: [dynamic]string,
+    anonymous_functions: [dynamic]Definition,
 }
 
 parse :: proc(parser: ^Parser, alloc: mem.Allocator) -> ([dynamic]Statement, bool) {
     context.allocator = alloc
 
+    parser.anonymous_functions = make([dynamic]Definition)
+
     statements := parse_statements(parser)
+
+    for anon in parser.anonymous_functions {
+        append(&statements, anon)
+    }
+
     ok := len(parser.errors) == 0
 
     return statements, ok
@@ -97,7 +105,12 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier) -> (call: Call, o
         }
 
         if peek == .Open_Paren {
-            
+            builder := strings.builder_make()
+            anon_name := fmt.sbprintf(&builder, "anon_%v", len(parser.anonymous_functions))
+            anon := parse_function_definition(parser, Identifier(anon_name), true) or_return
+            append(&parser.anonymous_functions, anon)
+            append(&args, Identifier(anon_name))
+            continue
         }
 
         current := get_next(parser)
@@ -137,11 +150,13 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier) -> (call: Call, o
     return
 }
 
-parse_function_definition :: proc(parser: ^Parser, name: Identifier) -> (def: Definition, ok: bool) {
+parse_function_definition :: proc(parser: ^Parser, name: Identifier, is_anon := false) -> (def: Definition, ok: bool) {
     _ = expect(parser, .Open_Paren) or_else panic("Impossible: No opening { in function")
     statements := parse_statements(parser)
     ed(parser, .Close_Paren) or_return
-    ed(parser, .Semicolon) or_return
+    if !is_anon {
+        ed(parser, .Semicolon) or_return
+    }
 
     def = Definition{name, statements}
     return def, true

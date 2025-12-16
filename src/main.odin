@@ -91,7 +91,7 @@ main :: proc() {
     data := os.read_entire_file(filename, ast_alloc) or_else panic("Couldnt read file")
 
     lexer := Lexer{data=data}
-    parser := Parser{&lexer, make([dynamic]string, ast_alloc)}
+    parser := Parser{&lexer, make([dynamic]string, ast_alloc), {}}
 
     ast, ok := parse(&parser, ast_alloc)
     if !ok {

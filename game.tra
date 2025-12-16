@@ -133,9 +133,7 @@ game_loop = {
 
     _ = draw_text "Hello world" 10 10 100 WHITE;
 
-    enter = is_key_down ENTER;
-    _ = if enter then;
-    then = {
+    _ = if {ret = is_key_down ENTER;} {
         _ = print "enter is pressed";
     };
 

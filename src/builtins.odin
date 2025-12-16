@@ -258,8 +258,17 @@ register_builtins :: proc(defs: ^map[string]Function) {
             error("Runtime Error function `if` only accepts two-three arguments.\nUsage: if cond then [else]")
         }
         
-        cond := as_type(args, 0, Bool, "if") or_return
-        cond_satisfied := bool(cond)
+        cond_satisfied := false
+        if cond, is_bool := args[0].(Bool); is_bool {
+            cond_satisfied = bool(cond)
+        } else if cond, is_func := args[0].(Function_Ref); is_func {
+            result := execute_func(args[0], super) or_return
+            boolean, ok2 := result.(Bool)
+            if !ok2 {
+                error("Runtime Error function %v in `if` must return Bool", cond)
+            }
+            cond_satisfied = bool(boolean)
+        }
 
         _ = as_type(args, 1, Function_Ref, "if") or_return
         if len(args) == 3 {
