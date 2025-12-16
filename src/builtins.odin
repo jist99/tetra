@@ -258,17 +258,8 @@ register_builtins :: proc(defs: ^map[string]Function) {
             error("Runtime Error function `if` only accepts two-three arguments.\nUsage: if cond then [else]")
         }
         
-        cond_satisfied := false
-        if cond, is_bool := args[0].(Bool); is_bool {
-            cond_satisfied = bool(cond)
-        } else if cond, is_func := args[0].(Function_Ref); is_func {
-            result := execute_func(args[0], super) or_return
-            boolean, ok2 := result.(Bool)
-            if !ok2 {
-                error("Runtime Error function %v in `if` must return Bool", cond)
-            }
-            cond_satisfied = bool(boolean)
-        }
+        cond := as_type_or_func(args, 0, Bool, super, "if") or_return
+        cond_satisfied := bool(cond)
 
         _ = as_type(args, 1, Function_Ref, "if") or_return
         if len(args) == 3 {
@@ -620,9 +611,24 @@ as_type :: proc(args: []Primitive, idx: int, $T: typeid, source: string) -> (out
     out, ok = args[idx].(T)
     if !ok {
         error("Runtime Error %v arg %v must be %v", source, idx, typeid_of(T))
-        return
     }
     return
+}
+
+@(private="file")
+as_type_or_func :: proc(args: []Primitive, idx: int, $T: typeid, super: Function_Context, source: string) -> (out: T, ok: bool) {
+    if func, is_func := args[idx].(Function_Ref); is_func {
+        value, valid := execute_func(func, super, {})
+        if !valid do return
+
+        out, ok = value.(T)
+        if !ok {
+            error("Runtime Error anonymous function for %v returned %v expecting type %v", source, out, typeid_of(T))
+        }
+        return
+    }
+
+    return as_type(args, idx, T, source)
 }
 
 @(private="file")
