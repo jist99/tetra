@@ -28,6 +28,7 @@ Call :: struct {
 Definition :: struct {
     name: Identifier,
     statements: [dynamic]Statement,
+    is_global: bool,
 }
 
 Statement :: union {
@@ -48,7 +49,7 @@ parse :: proc(parser: ^Parser, alloc: mem.Allocator) -> ([dynamic]Statement, boo
 
     parser.anonymous_functions = make([dynamic]Definition)
 
-    statements := parse_statements(parser)
+    statements := parse_statements(parser, true)
 
     for anon in parser.anonymous_functions {
         append(&statements, anon)
@@ -59,7 +60,7 @@ parse :: proc(parser: ^Parser, alloc: mem.Allocator) -> ([dynamic]Statement, boo
     return statements, ok
 }
 
-parse_statements :: proc(parser: ^Parser) -> [dynamic]Statement{
+parse_statements :: proc(parser: ^Parser, is_global: bool) -> [dynamic]Statement{
     statements := make([dynamic]Statement)
 
     for {
@@ -86,7 +87,7 @@ parse_statements :: proc(parser: ^Parser) -> [dynamic]Statement{
 
         if peek_next(parser).type == .Open_Paren {
             // function definition
-            definition, ok := parse_function_definition(parser, name)
+            definition, ok := parse_function_definition(parser, name, is_global)
             if !ok {
                 recover(parser)
                 continue
@@ -119,7 +120,7 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier, func: Maybe(Token
         if peek == .Open_Paren {
             builder := strings.builder_make()
             anon_name := fmt.sbprintf(&builder, "anon_%v", len(parser.anonymous_functions))
-            anon := parse_function_definition(parser, Identifier(anon_name), true) or_return
+            anon := parse_function_definition(parser, Identifier(anon_name), false, true) or_return
             append(&parser.anonymous_functions, anon)
             append(&args, Identifier(anon_name))
             continue
@@ -162,15 +163,20 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier, func: Maybe(Token
     return
 }
 
-parse_function_definition :: proc(parser: ^Parser, name: Identifier, is_anon := false) -> (def: Definition, ok: bool) {
+parse_function_definition :: proc(parser: ^Parser, name: Identifier, is_global: bool, is_anon := false) -> (def: Definition, ok: bool) {
     _ = expect(parser, .Open_Paren) or_else panic("Impossible: No opening { in function")
-    statements := parse_statements(parser)
+    statements := parse_statements(parser, false)
     ed(parser, .Close_Paren) or_return
     if !is_anon {
         ed(parser, .Semicolon) or_return
     }
+    
+    is_global := is_global
+    if is_anon {
+        is_global = false
+    }
 
-    def = Definition{name, statements}
+    def = Definition{name, statements, is_global}
     return def, true
 }
 

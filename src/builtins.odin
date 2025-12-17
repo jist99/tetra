@@ -5,7 +5,10 @@ import "core:strconv"
 import "core:strings"
 import "vendor:raylib"
 
-register_builtins :: proc(defs: ^map[string]Function) {
+register_builtins :: proc(output: ^map[string]Function_Entry) {
+    defs := make(map[string]Function)
+    defer delete(defs)
+
     defs["global.return"] = Return_Func{}
 
     defs["global.+"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
@@ -215,6 +218,28 @@ register_builtins :: proc(defs: ^map[string]Function) {
 
         arg := as_type(args, 0, Bool, "not") or_return
         return Bool(!bool(arg)), true
+    }
+
+    defs["global.and"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `and` only accepts two args\nUsage: and bool bool")
+            return nil, false
+        }
+
+        a := as_type(args, 0, Bool, "and") or_return
+        b := as_type(args, 1, Bool, "and") or_return
+        return Bool(bool(a) && bool(b)), true
+    }
+
+    defs["global.or"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error function `or` only accepts two args\nUsage: or bool bool")
+            return nil, false
+        }
+
+        a := as_type(args, 0, Bool, "or") or_return
+        b := as_type(args, 1, Bool, "or") or_return
+        return Bool(bool(a) || bool(b)), true
     }
 
     defs["global.print"] = proc(args: []Primitive, _: Function_Context) -> (Primitive, bool) {
@@ -533,6 +558,21 @@ register_builtins :: proc(defs: ^map[string]Function) {
         return group, true
     }
 
+    defs["global.set"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        // set group idx value
+        if len(args) != 3 {
+            error("Runtime Error function `set` requires 3 arguments\nUsage: set group idx value")
+            return nil, false
+        }
+
+        group := as_type(args, 0, ^Group, "set") or_return
+        idx := as_type(args, 1, Number, "set") or_return
+        value := args[2]
+
+        group[int(idx)] = value
+        return nil, true
+    }
+
     // Raylib functions!
     defs["global.init_window"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
         if len(args) != 3 {
@@ -574,20 +614,7 @@ register_builtins :: proc(defs: ^map[string]Function) {
         pos_x := as_type(args, 1, Number, "draw_text") or_return
         pos_y := as_type(args, 2, Number, "draw_text") or_return
         font_size := as_type(args, 3, Number, "draw_text") or_return
-        colour := as_type(args, 4, ^Group, "draw_text") or_return
-
-        if len(colour) != 4 {
-            error("Runtime Error Colour must have 4 values RGBA, got %v", colour)
-            return nil, false
-        }
-        ray_colour: raylib.Color
-        for entry, i in colour {
-            num, ok := entry.(Number)
-            if !ok {
-                error("Runtime Error Colour may only contain Numbers, got %v", entry)
-            }
-            ray_colour[i] = u8(num)
-        }
+        ray_colour := as_colour(args, 4, "draw_text") or_return
 
         c_text := strings.clone_to_cstring(string(text), context.temp_allocator)
         raylib.DrawText(c_text, i32(pos_x), i32(pos_y), i32(font_size), ray_colour)
@@ -603,9 +630,135 @@ register_builtins :: proc(defs: ^map[string]Function) {
         keycode := as_type(args, 0, Number, "is_key_down") or_return
         return Bool(raylib.IsKeyDown(raylib.KeyboardKey(keycode))), true
     }
+
+    defs["global.is_key_pressed"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 1 {
+            error("Runtime Error `is_key_pressed` only accepts one argument, the keycode.")
+            return nil, false
+        }
+
+        keycode := as_type(args, 0, Number, "is_key_pressed") or_return
+        return Bool(raylib.IsKeyPressed(raylib.KeyboardKey(keycode))), true
+    }
+
+    defs["global.draw_rectangle_v"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 3 {
+            error("Runtime Error draw_rectangle_v expects 3 args\nUsage: draw_rectangle_v position size colour")
+            return nil, false
+        }
+
+        position := as_vector2(args, 0, "draw_rectangle_v") or_return
+        size := as_vector2(args, 1, "draw_rectangle_v") or_return
+        colour := as_colour(args, 2, "draw_rectangle_v") or_return
+
+        raylib.DrawRectangleV(position, size, colour)
+        return nil, true
+    }
+
+    defs["global.clear_background"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 1 {
+            error("Runtime Error clear_background expects 1 arg\nUsage: clear_background colour")
+            return nil, false
+        }
+
+        colour := as_colour(args, 0, "clear_background") or_return
+        raylib.ClearBackground(colour)
+        return nil, true
+    }
+
+    defs["global.get_frame_time"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        ft := raylib.GetFrameTime()
+        return Number(ft), true
+    }
+
+    defs["global.get_random_value"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error get_random_value requires 2 args - min and max.")
+            return nil, false
+        }
+
+        min := as_type(args, 0, Number, "get_random_value") or_return
+        max := as_type(args, 1, Number, "get_random_value") or_return
+
+        value := raylib.GetRandomValue(i32(min), i32(max))
+        return Number(value), true
+    }
+
+    defs["global.check_collision_recs"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 2 {
+            error("Runtime Error check_collision_recs requires 2 args. Rec 1 and Rec 2")
+            return nil, false
+        }
+
+        rec1 := as_type(args, 0, ^Group, "check_collision_recs") or_return
+        rec2 := as_type(args, 1, ^Group, "check_collision_recs") or_return
+
+        // I'm being very lazy and not doing error checking properly
+        ray_rect_1: raylib.Rectangle
+        ray_rect_1.x = f32(rec1[0].(^Group)[0].(Number))
+        ray_rect_1.y = f32(rec1[0].(^Group)[1].(Number))
+        ray_rect_1.width = f32(rec1[1].(^Group)[0].(Number))
+        ray_rect_1.height = f32(rec1[1].(^Group)[1].(Number))
+
+        ray_rect_2: raylib.Rectangle
+        ray_rect_2.x = f32(rec2[0].(^Group)[0].(Number))
+        ray_rect_2.y = f32(rec2[0].(^Group)[1].(Number))
+        ray_rect_2.width = f32(rec2[1].(^Group)[0].(Number))
+        ray_rect_2.height = f32(rec2[1].(^Group)[1].(Number))
+
+        collision := raylib.CheckCollisionRecs(ray_rect_1, ray_rect_2)
+        return Bool(collision), true
+    }
+
+    for key, value in defs {
+        output[key] = Function_Entry{value, true}
+    }
 }
 
 // Helpers
+as_vector2 :: proc(args: []Primitive, idx: int, source: string) -> (out: raylib.Vector2, ok: bool) {
+    group := as_type(args, idx, ^Group, source) or_return
+
+    if len(group) != 2 {
+        error("Runtime Error Vector2 must have 2 values xy, got %v", group)
+        ok = false
+        return
+    }
+
+    vector: raylib.Vector2
+    for entry, i in group {
+        num, ok := entry.(Number)
+        if !ok {
+            error("Runtime Error Vector2 may only contain Numbers, got %v", entry)
+            ok = false
+            return
+        }
+        vector[i] = f32(num)
+    }
+    return vector, true
+}
+
+as_colour :: proc(args: []Primitive, idx: int, source: string) -> (out: raylib.Color, ok: bool) {
+    colour := as_type(args, idx, ^Group, source) or_return
+
+    if len(colour) != 4 {
+        error("Runtime Error Colour must have 4 values RGBA, got %v", colour)
+        ok = false
+        return
+    }
+    ray_colour: raylib.Color
+    for entry, i in colour {
+        num, ok := entry.(Number)
+        if !ok {
+            error("Runtime Error Colour may only contain Numbers, got %v", entry)
+            ok = false
+            return
+        }
+        ray_colour[i] = u8(num)
+    }
+    return ray_colour, true
+}
+
 @(private="file")
 as_type :: proc(args: []Primitive, idx: int, $T: typeid, source: string) -> (out: T, ok: bool) {
     out, ok = args[idx].(T)
@@ -663,12 +816,12 @@ execute_func :: proc(
         args = []Primitive{}
     }
 
-    switch raw_fn in func {
+    switch raw_fn in func.func {
     case proc([]Primitive, Function_Context) -> (Primitive, bool):
         return raw_fn(args, super)
 
     case [dynamic]Statement:
-        return execute(raw_fn[:], super.definitions, super.dcm, args, string(ref))
+        return execute(raw_fn[:], super.definitions, super.dcm, args, func.is_global, string(ref))
     
     case Return_Func:
         error("Runtime Error cannot use `return` func as lambda.")

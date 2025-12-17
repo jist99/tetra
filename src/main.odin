@@ -21,7 +21,7 @@ Primitive :: union {
 
 // Context for passing to builtin functions
 Function_Context :: struct {
-    definitions: map[string]Function,
+    definitions: map[string]Function_Entry,
     dcm: ^DeepChainMap,
     arguments: []Primitive,
     namespace: string,
@@ -35,6 +35,11 @@ Function :: union {
     proc([]Primitive, Function_Context) -> (Primitive, bool),
     // Special function for early returns
     Return_Func,
+}
+
+Function_Entry :: struct {
+    func: Function,
+    is_global: bool,
 }
 
 Scope :: struct {
@@ -101,7 +106,7 @@ main :: proc() {
         return
     }
 
-    definitions := make(map[string]Function, ast_alloc)
+    definitions := make(map[string]Function_Entry, ast_alloc)
     ok = collect_definitions(ast[:], &definitions, ast_alloc)
     if !ok do return
     register_builtins(&definitions)
@@ -113,12 +118,12 @@ main :: proc() {
     defer destroy_gc(&gc)
 
     // Finally execute the code
-    execute(ast[:], definitions, &deep_chain_map, {})
+    execute(ast[:], definitions, &deep_chain_map, {}, true)
 }
 
 collect_definitions :: proc(
     ast: []Statement,
-    definitions: ^map[string]Function,
+    definitions: ^map[string]Function_Entry,
     allocator: mem.Allocator,
     namespace := "global"
 ) -> bool {
@@ -142,7 +147,7 @@ collect_definitions :: proc(
                 return false
             }
 
-            definitions[name] = def.statements
+            definitions[name] = Function_Entry{def.statements, def.is_global}
 
             collect_definitions(def.statements[:], definitions, allocator, name)
         }
@@ -153,9 +158,10 @@ collect_definitions :: proc(
 
 execute :: proc(
     ast: []Statement,
-    definitions: map[string]Function,
+    definitions: map[string]Function_Entry,
     dcm: ^DeepChainMap,
     arguments: []Primitive,
+    am_i_global: bool,
     namespace := "global",
 ) -> (Primitive, bool) {
     // each function gets its own AFA 
@@ -181,7 +187,7 @@ execute :: proc(
 
         case Call:
             // Traverse the scopes to find the function
-            func, full_name, found := find_func(definitions, dcm^, string(call.function))
+            func, full_name, found, is_global := find_func(definitions, dcm^, string(call.function))
             if !found {
                 error("Runtime Error function %v not found", call.function)
                 return nil, false
@@ -203,7 +209,7 @@ execute :: proc(
                     }
                     
                     // attempt to find a function instead
-                    _, variable, found = find_func(definitions, dcm^, string(arg))
+                    _, variable, found, _ = find_func(definitions, dcm^, string(arg))
                     if found {
                         func_arguments[i] = variable
                         continue
@@ -225,6 +231,7 @@ execute :: proc(
                     definitions,
                     dcm,
                     func_arguments[:],
+                    is_global,
                     string(full_name)
                 )
 
@@ -258,13 +265,23 @@ execute :: proc(
 
             // Perform the assignment
             // if the variable is ret or _ we have special rules, it's always local
-            if call.name != "ret" && call.name != "_" {
+            //
+            // global functions should also not look up the stack
+            // only at the local and global levels!
+            if call.name != "ret" && call.name != "_" && !am_i_global {
                 // first check if the variable exists somewhere up the stack
                 // if it does assign to that
                 #reverse for &scope in dcm[:len(dcm)-1] {
                     if string(call.name) in scope.data {
                         scope.data[string(call.name)] = returned
                     }
+                }
+            }
+
+            if am_i_global {
+                global_scope := dcm[0]
+                if string(call.name) in global_scope.data {
+                    global_scope.data[string(call.name)] = returned
                 }
             }
 
@@ -307,11 +324,12 @@ find_var :: proc(dcm: DeepChainMap, name: string) -> (Primitive, bool) {
 }
 
 // Find the function in defs
-find_func :: proc(definitions: map[string]Function, dcm: DeepChainMap, name: string) -> (Function, Function_Ref, bool) {
+find_func :: proc(definitions: map[string]Function_Entry, dcm: DeepChainMap, name: string) -> (Function, Function_Ref, bool, bool) {
     // Try find a Function_Ref first
     if full_name, found := find_var(dcm, name); found {
         if ref, ok := full_name.(Function_Ref); ok {
-            return definitions[string(ref)], ref, true
+            fn := definitions[string(ref)]
+            return fn.func, ref, true, fn.is_global
         }
     }
 
@@ -319,11 +337,12 @@ find_func :: proc(definitions: map[string]Function, dcm: DeepChainMap, name: str
     #reverse for scope in dcm {
         full_name := fmt.tprintf("%v.%v", scope.name, name)
         if full_name in definitions {
-            return definitions[full_name], Function_Ref(full_name), true
+            fn := definitions[full_name]
+            return fn.func, Function_Ref(full_name), true, fn.is_global
         }
     }
 
-    return nil, "", false
+    return nil, "", false, false
 }
 
 // Show error messages nicely
