@@ -710,6 +710,23 @@ register_builtins :: proc(output: ^map[string]Function_Entry) {
         return Bool(collision), true
     }
 
+    defs["global.draw_circle_sector"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 6 {
+            error("Runtime Error draw_circle_sector expects 6 args\nUsage: draw_circle centre radius startAngle endAngle segments colour")
+            return nil, false
+        }
+
+        centre := as_vector2(args, 0, "draw_circle_sector") or_return
+        radius := as_type(args, 1, Number, "draw_circle_sector") or_return
+        start_angle := as_type(args, 2, Number, "draw_circle_sector") or_return
+        end_angle := as_type(args, 3, Number, "draw_circle_sector") or_return
+        segments := as_type(args, 4, Number, "draw_circle_sector") or_return
+        colour := as_colour(args, 5, "draw_circle_sector") or_return
+
+        raylib.DrawCircleSector(centre, f32(radius), f32(start_angle), f32(end_angle), i32(segments), colour)
+        return nil, true
+    }
+
     for key, value in defs {
         output[key] = Function_Entry{value, true}
     }

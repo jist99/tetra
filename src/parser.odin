@@ -42,6 +42,7 @@ Parser :: struct {
     using lexer: ^Lexer,
     errors: [dynamic]string,
     anonymous_functions: [dynamic]Definition,
+    anon_number: int,
 }
 
 parse :: proc(parser: ^Parser, alloc: mem.Allocator) -> ([dynamic]Statement, bool) {
@@ -119,7 +120,8 @@ parse_function_call :: proc(parser: ^Parser, name: Identifier, func: Maybe(Token
 
         if peek == .Open_Paren {
             builder := strings.builder_make()
-            anon_name := fmt.sbprintf(&builder, "anon_%v", len(parser.anonymous_functions))
+            anon_name := fmt.sbprintf(&builder, "anon_%v", parser.anon_number)
+            parser.anon_number += 1
             anon := parse_function_definition(parser, Identifier(anon_name), false, true) or_return
             append(&parser.anonymous_functions, anon)
             append(&args, Identifier(anon_name))

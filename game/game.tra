@@ -121,12 +121,15 @@ RED = group 255 150 150 255;
 YELLOW = group 255 200 50 255;
 
 // Global game state should go here
+game_state = str "main";
+
 ACCEL_SPEED = num 10000;
 MAX_VELOCITY = num 600;
 Y_DECAY = num 50;
+X_DECAY = num 300;
 player_pos = group 425 400;
 player_vel_x = num 0;
-player_vel_y = num 100; // actually player_pos_y, lol
+player_vel_y = num 400; // actually player_pos_y, lol
 player_accel_y = num 0;
 player_boost_y = num 0;
 player_size = group 20 20;
@@ -134,11 +137,11 @@ player_size = group 20 20;
 booster_size = group 200 10;
 booster_x = num 0;
 booster_y = num -100;
-BOOSTER_SPEED = num 300;
+BOOSTER_SPEED = num 2;//300;
 
 main;
 main = {
-    init_window 900 600 "Test";
+    init_window 900 800 "Test";
     shouldnt_close = {
         close = window_should_close;
         not close;
@@ -147,6 +150,40 @@ main = {
 };
 
 game_loop = {
+    if {eq game_state "main";} main_game;
+    if {eq game_state "loss";} loss;
+    if {eq game_state "win";} win;
+};
+
+win = {
+
+    begin_drawing;
+    clear_background BLACK;
+
+    draw_text "Escaped the Sun" 10 10 70 WHITE;
+
+    // THE SUN!
+    sun_centre = group 450 2000;
+    draw_circle_sector sun_centre 1300 240 300 100 YELLOW;
+
+    end_drawing;
+};
+
+loss = {
+
+    begin_drawing;
+    clear_background BLACK;
+
+    draw_text "Consumed by the Sun" 10 10 70 WHITE;
+
+    // THE SUN!
+    sun_centre = group 450 2000;
+    draw_circle_sector sun_centre 1300 240 300 100 YELLOW;
+
+    end_drawing;
+};
+
+main_game = {
     // input
     frame_time = get_frame_time;
 
@@ -156,7 +193,14 @@ game_loop = {
     if {is_key_down RIGHT;} {x_dir = num 1;};
 
     dx = * x_dir ACCEL_SPEED frame_time;
+    if {eq x_dir 0;} {
+        dir = num -1;
+        if {< player_vel_x 0;} {dir = num 1;};
+        dx = * X_DECAY dir frame_time;  
+    };
+
     player_vel_x = ifx player_vel_x + dx;
+
     if {ifx player_vel_x > MAX_VELOCITY;} {
         player_vel_x = num MAX_VELOCITY;
     };
@@ -176,6 +220,12 @@ game_loop = {
 
     decay = ifx decay * frame_time;
     player_vel_y = ifx player_vel_y + decay;
+
+    // player death
+    if {> player_vel_y 750;} {game_state = str "loss";}; 
+
+    // player win
+    if {< player_vel_y 0;} {game_state = str "win";};
     
     // BOOST
     if {rec1 = group player_pos player_size;
@@ -186,10 +236,13 @@ game_loop = {
         player_boost_y = num 300;
         player_accel_y = num 0;
     };
-    dy = ifx BOOSTER_SPEED * frame_time;
+    inverted_vel = ifx 800 - player_vel_y; // this is stupid because of how i've stupidly implemented vel
+    dy = * BOOSTER_SPEED inverted_vel frame_time;
+    extra_speed = * 400 frame_time;
+    dy = + dy extra_speed;
     booster_y = ifx booster_y + dy;
     
-    if {ifx booster_y > 1000;} {
+    if {ifx booster_y > 2000;} {
         booster_y = num -100;
         booster_x = get_random_value 0 700;
     };
@@ -204,6 +257,10 @@ game_loop = {
 
     booster_pos = group booster_x booster_y;
     draw_rectangle_v booster_pos booster_size YELLOW;
+
+    // THE SUN!
+    sun_centre = group 450 2000;
+    draw_circle_sector sun_centre 1300 240 300 100 YELLOW;
 
     end_drawing;
 };
