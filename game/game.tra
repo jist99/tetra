@@ -126,7 +126,7 @@ game_state = str "start";
 
 ACCEL_SPEED = num 10000;
 MAX_VELOCITY = num 600;
-Y_DECAY = num 30;
+Y_DECAY = num 40;
 X_DECAY = num 300;
 player_pos = group 425 400;
 player_vel_x = num 0;
@@ -166,7 +166,7 @@ reset = {
     player_accel_y = num 0;
     player_boost_y = num 0;
 
-    booster_x = num 0;
+    booster_x = get_random_value 0 700;
     booster_y = num -100;
 };
 
@@ -259,9 +259,11 @@ main_game = {
 
     // calculate Y decay
     decay = ifx Y_DECAY - player_accel_y;
-    player_accel_y = ifx player_accel_y - 0.01;
+    accel_decay = * 5 frame_time;
+    player_accel_y = ifx player_accel_y - accel_decay;
 
-    player_boost_y = ifx player_boost_y - 0.3;
+    boost_decay = * 150 frame_time;
+    player_boost_y = ifx player_boost_y - boost_decay;
     if {ifx player_boost_y < 0;} {player_boost_y = num 0;};
     decay = ifx decay - player_boost_y;
 
