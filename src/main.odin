@@ -91,6 +91,7 @@ main :: proc() {
     // Read in the file
     if len(os.args) != 2 {
         fmt.println("usage: tetra filename")
+        return
     }
     filename := os.args[1]
     data := os.read_entire_file(filename, ast_alloc) or_else panic("Couldnt read file")
