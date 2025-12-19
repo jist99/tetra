@@ -20,3 +20,17 @@ Tetra (inspired by the fish neon tetra), is an entry for the
 > 8. Bonus points: Write a blog post about your language, game, and design
      process.
 
+## Building
+**Requirements:**
+- The Odin programming language [See the "Getting Started" page](https://odin-lang.org/docs/install/)
+- Odin-Raylib bindings
+    - This is provided in the "vendor" section of the Odin standard library.
+    - Note that packages in the "vendor" section aren't always included by package managers.
+
+**Compile Tetra:**
+- `odin build src -out:tetra`
+    - The `-o:speed` flag can be passed for an optimised build.
+    - The `-debug` flag can be passed to enable runtime memory tracking.
+ 
+**Run the game:**
+- `tetra game/game.tra`
