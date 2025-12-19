@@ -727,6 +727,21 @@ register_builtins :: proc(output: ^map[string]Function_Entry) {
         return nil, true
     }
 
+    defs["global.draw_triangle"] = proc(args: []Primitive, _: Function_Context) -> (out: Primitive, ok: bool) {
+        if len(args) != 4 {
+            error("Runtime Error draw_triangle expects 4 args\nUsage: draw_triangle v1 v2 v3 colour")
+            return nil, false
+        }
+
+        v1 := as_vector2(args, 0, "draw_triangle") or_return
+        v2 := as_vector2(args, 1, "draw_triangle") or_return
+        v3 := as_vector2(args, 2, "draw_triangle") or_return
+        colour := as_colour(args, 3, "draw_triangle") or_return
+
+        raylib.DrawTriangle(v1, v2, v3, colour)
+        return nil, true
+    }
+
     for key, value in defs {
         output[key] = Function_Entry{value, true}
     }

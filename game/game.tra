@@ -119,13 +119,14 @@ WHITE = group 255 255 255 255;
 BLACK = group 0 0 0 255;
 RED = group 255 150 150 255;
 YELLOW = group 255 200 50 255;
+GREEN = group 150 255 150 255;
 
 // Global game state should go here
-game_state = str "main";
+game_state = str "start";
 
 ACCEL_SPEED = num 10000;
 MAX_VELOCITY = num 600;
-Y_DECAY = num 50;
+Y_DECAY = num 30;
 X_DECAY = num 300;
 player_pos = group 425 400;
 player_vel_x = num 0;
@@ -137,22 +138,56 @@ player_size = group 20 20;
 booster_size = group 200 10;
 booster_x = num 0;
 booster_y = num -100;
-BOOSTER_SPEED = num 2;//300;
+BOOSTER_SPEED = num 1.7;
 
 main;
 main = {
-    init_window 900 800 "Test";
+    init_window 900 800 "Solar Escape";
     shouldnt_close = {
         close = window_should_close;
         not close;
     };
+
+    reset;
     while shouldnt_close game_loop;
 };
 
 game_loop = {
+    if {eq game_state "start";} start_menu;
     if {eq game_state "main";} main_game;
     if {eq game_state "loss";} loss;
     if {eq game_state "win";} win;
+};
+
+reset = {
+    player_pos = group 425 400;
+    player_vel_x = num 0;
+    player_vel_y = num 400;
+    player_accel_y = num 0;
+    player_boost_y = num 0;
+
+    booster_x = num 0;
+    booster_y = num -100;
+};
+
+start_menu = {
+    begin_drawing;
+    clear_background BLACK;
+
+    draw_text "Left/Right Arrows" 90 10 70 WHITE;
+    draw_text "to Move" 300 90 70 WHITE;
+
+    draw_text "Use the Green Boosters" 10 300 70 GREEN;
+    draw_text "to Escape" 300 390 70 GREEN;
+
+    draw_text "SPACE to Play" 200 600 70 YELLOW;
+
+    if {is_key_pressed SPACE;} {
+        game_state = str "main";
+        reset;
+    }; 
+
+    end_drawing;
 };
 
 win = {
@@ -160,7 +195,13 @@ win = {
     begin_drawing;
     clear_background BLACK;
 
-    draw_text "Escaped the Sun" 10 10 70 WHITE;
+    draw_text "Escaped the Sun" 30 10 70 WHITE;
+    draw_text "SPACE to restart" 30 400 70 WHITE;
+
+    if {is_key_pressed SPACE;} {
+        game_state = str "main";
+        reset;
+    }; 
 
     // THE SUN!
     sun_centre = group 450 2000;
@@ -174,7 +215,13 @@ loss = {
     begin_drawing;
     clear_background BLACK;
 
-    draw_text "Consumed by the Sun" 10 10 70 WHITE;
+    draw_text "Consumed by the Sun" 30 10 70 WHITE;
+    draw_text "SPACE to restart" 30 400 70 WHITE;
+
+    if {is_key_pressed SPACE;} {
+        game_state = str "main";
+        reset;
+    }; 
 
     // THE SUN!
     sun_centre = group 450 2000;
@@ -253,10 +300,26 @@ main_game = {
     begin_drawing;
     clear_background BLACK;
 
-    draw_rectangle_v player_pos player_size RED;
+    // player triangle
+    player_x = get player_pos 0;
+    player_y = get player_pos 1;
+
+    // top middle
+    mid_point = + player_x 10;
+    v1 = group mid_point player_y;
+
+    // bottom left
+    bottom = + player_y 20;
+    v2 = group player_x bottom;
+
+    // bottom right
+    right = + player_x 20;
+    v3 = group right bottom;
+
+    draw_triangle v1 v2 v3 RED;
 
     booster_pos = group booster_x booster_y;
-    draw_rectangle_v booster_pos booster_size YELLOW;
+    draw_rectangle_v booster_pos booster_size GREEN;
 
     // THE SUN!
     sun_centre = group 450 2000;
